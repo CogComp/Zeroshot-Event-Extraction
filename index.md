@@ -1,37 +1,162 @@
-## Welcome to GitHub Pages
+# Zero-shot Event Extraction
 
-You can use the [editor on GitHub](https://github.com/CogComp/Zeroshot-Event-Extraction/edit/gh-pages/index.md) to maintain and preview the content for your website in Markdown files.
+This is the code repository for ACL2021 paper: [Zero-shot Event Extraction via Transfer Learning: Challenges and Insights](https://aclanthology.org/2021.acl-short.42/).
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+A lot of the infrastructure (preprocessing, scorer, etc.) is adapted from the [OneIE codebase](http://blender.cs.illinois.edu/software/oneie/). Special thanks to the authors!
 
-### Markdown
+## Getting Started
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+### Environment
 
-```markdown
-Syntax highlighted code block
+- If you are a [CogComp](https://cogcomp.seas.upenn.edu/) member, you can directly run `conda activate /shared/lyuqing/probing_for_event/env` on any NLP server to activate the conda environment.
+- Otherwise, `environment.yml` specifies the environment requirements. You can create the environment using it according to [this guildeline](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#creating-an-environment-from-an-environment-yml-file).
 
-# Header 1
-## Header 2
-### Header 3
+### Data
+- ACE-2005 (LDC2006T06): Available from [LDC's release](https://catalog.ldc.upenn.edu/LDC2006T06).
+- ERE (LDC2015E29): This corpus is part of the [DEFT program](https://www.darpa.mil/program/deep-exploration-and-filtering-of-text) and thus only availble to its participants. Please check your institution's LDC account for access. 
 
-- Bulleted
-- List
+One you download the corpora, place them under `data/`, so the complete paths look like `data/LDC2006T06` and `data/LDC2015E29`.
 
-1. Numbered
-2. List
+### Pretrained Models
+- Pretrained Textual Entailment (TE) model: [link](https://huggingface.co/veronica320/TE-for-Event-Extraction)
+- Pretrained Question Answering (QA) model: [link](https://huggingface.co/veronica320/QA-for-Event-Extraction)
 
-**Bold** and _Italic_ and `Code` text
+No need to pre-download them yourself; once you follow the instructions to run the event extration pipeline, they will be downloaded automatically.
 
-[Link](url) and ![Image](src)
+## Repository structure
+
+* `data/`: The data directory.
+    * `LDC2006T06/`: The ACE corpus.
+    * `LDC2015E29/`: The ERE corpus.
+    * `ACE_converted/`: The preprocessed ACE corpus. Specifically, `{train|dev|test}.event.json` will be the 3 files relevant to event extraction only.
+    * `ERE_converted/`: The preprocessed ERE corpus. Specifically, `all.event.json` will be the file elevant to event extraction only.
+    * `srl_output/`: The output of running SRL on the preprocessed ACE/ERE. The event extraction model loads SRL outputs from this directory when making predictions.
+    * `splits`: The train/dev/test splits from OneIE.
+* `output_dir/`: The folder for model predictions.  
+* `source/`: The source codes.
+	* `config/`: Model configuration files. A specific README is included within.
+	* `prepreocessing/`: Preprocessing scripts for ACE and ERE data.
+	* `lexicon/`: Stores various txt files.
+		* `probes/`: The "probe" files. Each file contains a set of probes (i.e. hypothese templates / question templates). Each file name is in the format of `{arg|trg}_{te|qa}_probes_{setting}.txt`.
+		* `arg_srl2ace.txt`: A one-to-many mapping from SRL argument names to ACE argument names.
+	* `configuration.py`: The Configuration class. Adapted from OneIE.
+	* `model.py`: The main event extraction pipeline. See comments inside.
+	* `predict_evaluate.py`: The code to make predictions and evaluate the model.
+	* `scorer.py`: The scorer called by `predict_evaluate.py`. Adapted from OneIE.
+	* `graph.py`: The Graph class. Adapted from OneIE.
+	* `data.py`: The Dataset class. Adapted from OneIE.
+	* `utils/`: Helper functions.
+
+## Usage
+Here are the instructions on how to run our system for inference.
+To start, go to the `source` folder.
+
+### Data preprocessing
+Our preprocessing scripts are adapted from the [OneIE codebase](http://blender.cs.illinois.edu/software/oneie/).
+
+#### Preprocessing ACE2005
+The `prepreocessing/process_ace.py` script converts raw ACE2005 datasets to the format used by our system. 
+
+Usage:
+Run at the repository root directory
+
+```
+python preprocessing/process_ace.py -i <INPUT_DIR> -o <OUTPUT_DIR> -s data/splits/ACE05-E -b <BERT_MODEL> -c <CACHE_DIR> -l <LANGUAGE> --time_and_val
 ```
 
-For more details see [Basic writing and formatting syntax](https://docs.github.com/en/github/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax).
+Example:
 
-### Jekyll Themes
+```
+python preprocessing/process_ace.py -i data/LDC2006T06/data -o data/ACE_converted -s data/splits/ACE05-E -b bert-large-cased -c /shared/.cache/transformers -l english --time_and_val
+```
 
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/CogComp/Zeroshot-Event-Extraction/settings/pages). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
+Arguments:
 
-### Support or Contact
+- -i, --input: Path to the input directory. Should be `data/LDC2006T06/data`.
+- -o, --output: Path to the output directory. Should be `data/ACE_converted`.
+- -b, --bert: Bert model name.
+- -c, --cache\_dir: Path to your Huggingface Transformer cache directory.
+- -s, --split: Path to the split directory. We use the same splits as OneIE.
+- -l, --lang: Language (options: english, chinese).
 
-Having trouble with Pages? Check out our [documentation](https://docs.github.com/categories/github-pages-basics/) or [contact support](https://support.github.com/contact) and we’ll help you sort it out.
+#### Preprocessing ERE
+The `prepreocessing/process_ere.py` script converts raw ERE dataset to the format used by our system.
+
+Usage:
+Run at the repository root directory
+```
+python preprocessing/process_ere.py -i <INPUT_DIR> -o <OUTPUT_DIR> -b <BERT_MODEL> -c <CACHE_DIR> -l <LANGUAGE>
+```
+
+Example:
+
+```
+python preprocessing/process_ere.py -i data/LDC2015E29/LDC2015E29_DEFT_Rich_ERE_English_Training_Annotation_V2/data -o data/ERE_converted -b bert-large-cased -c /shared/.cache/transformers -l english
+```
+
+Arguments:
+
+- -i, --input: Path to the input directory. Should be `data/LDC2015E29/data`.
+- -o, --output: Path to the output directory. Should be `data/ERE_converted`.
+- -b, --bert: Bert model name.
+- -c, --cache\_dir: Path to the BERT cache directory.
+- -l, --lang: Language (options: english, spanish).
+
+### Getting the SRL output
+
+
+After preprocessing, we run the SRL model developed by [Celine Lee](https://github.com/celine-lee). The SRL output will be used by the subsequent event extracion components. 
+
+To run the SRL models, you can clone [this repo](https://github.com/CogComp/SRL-English) and follow its instructions. It includes both Verb SRL and Nominal SRL, corresponding to "SRL_VERB" and "SRL_NOM_ALL" under "The folders and views". Please follow the "to predict" part in the repo for input format and prediction scripts. 
+
+(PS: In the experiments of our paper, we used a group-internal request API to access the SRL model. But since it's hosted on our servers, it's unlikely to be publicly available. Instead, the CogComp group released the Github repo of the SRL model for people to run locally.)
+
+You should put the SRL output files under `data/SRL_output/ACE` or `data/SRL_output/ERE`. The output files should be named `{nom|verb}SRL_{split}.jsonl`. For example, `data/SRL_output/ACE/nomSRL_dev.jsonl`, or `data/SRL_output/ERE/nomSRL_all.jsonl`.
+
+To see what format the output files should be, please refer to the sample files: `data/SRL_output/ACE/{nom|verb}SRL_dev_sample.jsonl`. Each sample file has the NomSRL/VerbSRL output respectively. All json fields except for 
+`verbs/nominals` come from the preprocessed data in the previous step. The same format applies to other splits and the ERE corpus.
+
+Each sample file has only one sentence, due to ACE confidentiality restrictions.
+
+### Set the configuration
+Go to `source/config`, and set the configuration in `config.json`. See `source/config/config_README.md` for details on each parameter.
+
+
+### Make predictions & Evaluate the model
+Run `python source/predict_evaluate.py`. The gold and predicted events, as well as the scores, will be printed to std output. A json version of the predicted events will also be saved to `output_dir/`, in the same format as the input file.
+
+Note:
+- You'll need to specify your own root directory in 'predict_evaluate.py' (line 5).
+- Running our model requires downloading AllenNLP's dependency parser and constituency parser (line 94-97 in `model.py`). In case downloading at run-time does not work for you, an alternative is to download the parsers ahead of time at the following link:
+	- https://s3-us-west-2.amazonaws.com/allennlp/models/biaffine-dependency-parser-ptb-2018.08.23.tar.gz
+	- https://s3-us-west-2.amazonaws.com/allennlp/models/elmo-constituency-parser-2018.03.14.tar.gz
+	
+  then in lines 94 to 97 in 'model.py', replace the url links by the paths for the downloaded files.
+ 
+## Citation
+If you find this repo useful, please cite the following paper:
+
+```
+@inproceedings{lyu-etal-2021-zero,
+    title = "Zero-shot Event Extraction via Transfer Learning: {C}hallenges and Insights",
+    author = "Lyu, Qing  and
+      Zhang, Hongming  and
+      Sulem, Elior  and
+      Roth, Dan",
+    booktitle = "Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 2: Short Papers)",
+    month = aug,
+    year = "2021",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2021.acl-short.42",
+    doi = "10.18653/v1/2021.acl-short.42",
+    pages = "322--332",
+    abstract = "Event extraction has long been a challenging task, addressed mostly with supervised methods that require expensive annotation and are not extensible to new event ontologies. In this work, we explore the possibility of zero-shot event extraction by formulating it as a set of Textual Entailment (TE) and/or Question Answering (QA) queries (e.g. {``}A city was attacked{''} entails {``}There is an attack{''}), exploiting pretrained TE/QA models for direct transfer. On ACE-2005 and ERE, our system achieves acceptable results, yet there is still a large gap from supervised approaches, showing that current QA and TE technologies fail in transferring to a different domain. To investigate the reasons behind the gap, we analyze the remaining key challenges, their respective impact, and possible improvement directions.",
+}
+```
+
+
+<!-- LICENSE -->
+## License
+
+Distributed under the MIT License.
