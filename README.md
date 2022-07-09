@@ -1,4 +1,3 @@
-TEST!!!
 # Zero-shot Event Extraction
 
 This is the code repository for ACL2021 paper: [Zero-shot Event Extraction via Transfer Learning: Challenges and Insights](https://aclanthology.org/2021.acl-short.42/).
